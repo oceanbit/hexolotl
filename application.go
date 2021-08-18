@@ -40,7 +40,7 @@ func readAndObserveFile(
 
 	readFileUpdateChunk := func(offset int64) {
 		var err error
-		byteChunkSize, err = activeFile.ReadAt(byteChunk, 0)
+		byteChunkSize, err = activeFile.ReadAt(byteChunk, offset)
 		check(err)
 	}
 
@@ -73,6 +73,7 @@ func readAndObserveFile(
 			}
 		}
 		readFileUpdateChunk(currentFileChunkIndex * bytesPerRow)
+
 		onChange(
 			byteChunk,
 			currentFileChunkIndex,
@@ -97,6 +98,7 @@ func simpleFileSelector(s tcell.Screen, style tcell.Style, quit func()) string {
 				s,
 				style,
 			)
+			s.Sync()
 			waitForEnter(
 				s,
 				quit,
@@ -114,7 +116,6 @@ func simpleFileSelector(s tcell.Screen, style tcell.Style, quit func()) string {
 func writeText(text string, y int, s tcell.Screen, style tcell.Style) {
 	for i, promptChar := range text {
 		s.SetContent(i, y, promptChar, nil, style)
-		s.Sync()
 	}
 }
 
@@ -138,12 +139,14 @@ func waitForEnter(s tcell.Screen, quit func(), evFn func(ev tcell.Event)) {
 
 func textPrompt(promptText string, s tcell.Screen, style tcell.Style, quit func()) string {
 	writeText(promptText, 0, s, style)
+	s.Sync()
 
 	var output string = ""
 	colIndex := 0
 	waitForEnter(s, quit, func(ev tcell.Event) {
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
+			// Handle backspace properly
 			char := ev.Rune()
 			s.SetContent(colIndex, 1, char, nil, style)
 			output += string(char)
@@ -193,6 +196,8 @@ func main() {
 				}
 				b := byteChunk[byteLocalIndex]
 				s.SetContent(col, row, rune(b), nil, textStyle)
+				//writeText(strconv.FormatInt(currentFileChunkIndex, 10), 5, s, textStyle)
+				//writeText(string(byteChunk), 6, s, textStyle)
 			}
 		}
 		s.Show()
