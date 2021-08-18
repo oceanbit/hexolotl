@@ -17,24 +17,64 @@ func check(e error) {
 		panic(e)
 	}
 }
+type OnChangeFn func([]byte, int64, int64)
 
-func main() {
+func readAndObserveFile(
+	bytesPerRow int64,
+	numberOfRows int,
+	onChange OnChangeFn,
+) chan rxgo.Item {
 	fileSeekChannel := make(chan rxgo.Item)
 
 	fileSeekObservable := rxgo.FromChannel(fileSeekChannel)
 
-	var bytesPerLine int64 = 120
-	numberOfRows := 3
+	var currentFileChunkIndex int64 = 0
 
 	// TODO: Replace this with file selector
 	dat, e := os.Open("demo.txt")
 	check(e)
-	bytes := make([]byte, bytesPerLine * int64(numberOfRows))
-	numOfBytes, err := dat.ReadAt(bytes, 0)
+	byteChunk := make([]byte, bytesPerRow * int64(numberOfRows))
+	byteChunkSize, err := dat.ReadAt(byteChunk, 0)
 	check(err)
 	fileStat, statE := dat.Stat()
 	fileSize := fileStat.Size()
 	check(statE)
+
+	onChange(
+		byteChunk,
+		currentFileChunkIndex,
+		fileSize,
+	)
+
+	fileSeekObservable.DoOnNext(func (i interface {}) {
+		if i == "up" {
+			currentFileChunkIndex -= 1
+			if currentFileChunkIndex < 0 {
+				currentFileChunkIndex = 0
+			}
+		} else if i == "down" {
+			currentFileChunkIndex += 1
+			maxRowIndex := fileSize / bytesPerRow
+			if currentFileChunkIndex >= maxRowIndex {
+				currentFileChunkIndex = maxRowIndex
+			}
+		}
+		numOfOffsetBytes, err := dat.ReadAt(byteChunk, currentFileChunkIndex *bytesPerRow)
+		byteChunkSize = numOfOffsetBytes
+		check(err)
+		onChange(
+			byteChunk,
+			currentFileChunkIndex,
+			fileSize,
+		)
+	})
+
+	return fileSeekChannel
+}
+
+func main() {
+	var bytesPerRow int64 = 120
+	numberOfRows := 3
 
 	defStyle := tcell.StyleDefault.Background(tcell.ColorReset).Foreground(tcell.ColorReset)
 	textStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorPurple)
@@ -50,48 +90,29 @@ func main() {
 	s.SetStyle(defStyle)
 	s.Clear()
 
-	var currentRow int64 = 0
-
-	redraw := func() {
-		numOfOffsetBytes, err := dat.ReadAt(bytes, currentRow * bytesPerLine)
-		numOfBytes = numOfOffsetBytes
-		check(err)
-
+	var redraw OnChangeFn = func(byteChunk []byte, currentFileChunkIndex int64, fileSize int64) {
 		s.Clear()
 		for row := 0; row < numberOfRows; row++ {
-			rowIndex := currentRow + int64(row)
-			for col := 0; int64(col) < bytesPerLine; col++ {
-				byteTotalIndex := (rowIndex * bytesPerLine) + int64(col)
-				byteLocalIndex := (int64(row) * bytesPerLine) + int64(col)
+			rowIndex := currentFileChunkIndex + int64(row)
+			for col := 0; int64(col) < bytesPerRow; col++ {
+				byteTotalIndex := (rowIndex * bytesPerRow) + int64(col)
+				byteLocalIndex := (int64(row) * bytesPerRow) + int64(col)
 				if byteTotalIndex >= fileSize {
 					break
 				}
-				b := bytes[byteLocalIndex]
+				b := byteChunk[byteLocalIndex]
 				s.SetContent(col, row, rune(b), nil, textStyle)
 			}
 		}
 		s.Show()
 	}
 
-	redraw()
+	fileSeekChannel := readAndObserveFile(
+		bytesPerRow,
+		numberOfRows,
+		redraw,
+	)
 
-	fileSeekObservable.DoOnNext(func (i interface {}) {
-		if i == "up" {
-			currentRow -= 1
-			if currentRow < 0 {
-				currentRow = 0
-			}
-		} else if i == "down" {
-			currentRow += 1
-			maxRowIndex := fileSize / bytesPerLine
-			if currentRow >= maxRowIndex {
-				currentRow = maxRowIndex
-			}
-		}
-		redraw()
-	})
-
-	// Event loop
 	quit := func() {
 		s.Fini()
 		os.Exit(0)
