@@ -2,18 +2,22 @@ package main
 
 import (
 	"github.com/gdamore/tcell/v2"
+	"io"
 	"log"
 	"os"
 )
 
 func check(e error) {
+	if e == io.EOF {
+		return
+	}
 	if e != nil {
 		panic(e)
 	}
 }
 
 func main() {
-	var bytesPerLine int64 = 20
+	var bytesPerLine int64 = 120
 	numberOfRows := 3
 
 	// TODO: Replace this with file selector
