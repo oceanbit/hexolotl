@@ -23,7 +23,7 @@ func readAndObserveFile(
 	bytesPerRow int64,
 	numberOfRows int,
 	onChange OnChangeFn,
-) chan rxgo.Item {
+) (chan rxgo.Item, *os.File) {
 	fileSeekChannel := make(chan rxgo.Item)
 
 	fileSeekObservable := rxgo.FromChannel(fileSeekChannel)
@@ -31,21 +31,33 @@ func readAndObserveFile(
 	var currentFileChunkIndex int64 = 0
 
 	// TODO: Replace this with file selector
-	dat, e := os.Open("demo.txt")
-	check(e)
+	activeFile, openErr := os.Open("demo.txt")
+	check(openErr)
+
 	byteChunk := make([]byte, bytesPerRow * int64(numberOfRows))
-	byteChunkSize, err := dat.ReadAt(byteChunk, 0)
-	check(err)
-	fileStat, statE := dat.Stat()
+	byteChunkSize := 0
+
+	readFileUpdateChunk := func(offset int64) {
+		var err error
+		byteChunkSize, err = activeFile.ReadAt(byteChunk, 0)
+		check(err)
+	}
+
+	readFileUpdateChunk(0)
+
+	// Get file size
+	fileStat, statE := activeFile.Stat()
 	fileSize := fileStat.Size()
 	check(statE)
 
+	// Eager initialize UI
 	onChange(
 		byteChunk,
 		currentFileChunkIndex,
 		fileSize,
 	)
 
+	// Update UI on observable update
 	fileSeekObservable.DoOnNext(func (i interface {}) {
 		if i == "up" {
 			currentFileChunkIndex -= 1
@@ -59,9 +71,7 @@ func readAndObserveFile(
 				currentFileChunkIndex = maxRowIndex
 			}
 		}
-		numOfOffsetBytes, err := dat.ReadAt(byteChunk, currentFileChunkIndex *bytesPerRow)
-		byteChunkSize = numOfOffsetBytes
-		check(err)
+		readFileUpdateChunk(currentFileChunkIndex * bytesPerRow)
 		onChange(
 			byteChunk,
 			currentFileChunkIndex,
@@ -69,7 +79,7 @@ func readAndObserveFile(
 		)
 	})
 
-	return fileSeekChannel
+	return fileSeekChannel, activeFile
 }
 
 func main() {
@@ -79,7 +89,6 @@ func main() {
 	defStyle := tcell.StyleDefault.Background(tcell.ColorReset).Foreground(tcell.ColorReset)
 	textStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorPurple)
 
-	// Initialize screen
 	s, err := tcell.NewScreen()
 	if err != nil {
 		log.Fatalf("%+v", err)
@@ -107,7 +116,7 @@ func main() {
 		s.Show()
 	}
 
-	fileSeekChannel := readAndObserveFile(
+	fileSeekChannel, activeFile := readAndObserveFile(
 		bytesPerRow,
 		numberOfRows,
 		redraw,
@@ -115,11 +124,12 @@ func main() {
 
 	quit := func() {
 		s.Fini()
+		closeErr := activeFile.Close()
+		check(closeErr)
 		os.Exit(0)
 	}
 	for {
 		ev := s.PollEvent()
-
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			s.Sync()
