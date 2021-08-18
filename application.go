@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"log"
 	"os"
@@ -30,9 +31,19 @@ func main() {
 	s.SetStyle(defStyle)
 	s.Clear()
 
-	// Draw initial boxes
-	drawText(s, 0, 0, boxStyle, "Click and drag to draw a box")
-	drawText(s, 0, 1, boxStyle, "Press C to reset")
+	startLine := 0
+	text := [6]string{"Testing line 1", "Testing line 2", "Testing line 3", "Testing line 4", "Testing line 5", "Testing line 6"}
+
+	redraw := func() {
+		s.Clear()
+		for i := 0; i < 2 && (startLine + i) < len(text); i++ {
+			fmt.Println(i)
+			drawText(s, 0, i, boxStyle, text[startLine + i])
+		}
+		s.Show()
+	}
+
+	redraw()
 
 	// Event loop
 	quit := func() {
@@ -54,9 +65,17 @@ func main() {
 			if ev.Key() == tcell.KeyEscape || ev.Key() == tcell.KeyCtrlC {
 				quit()
 			} else if ev.Key() == tcell.KeyUp {
-				s.Sync()
+				startLine -= 1
+				if startLine < 0 {
+					startLine = 0
+				}
+				redraw()
 			} else if ev.Key() == tcell.KeyDown {
-				s.Clear()
+				startLine += 1
+				if startLine >= len(text) {
+					startLine = len(text) - 1
+				}
+				redraw()
 			}
 		}
 	}
