@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"github.com/gdamore/tcell/v2"
 	"github.com/reactivex/rxgo/v2"
 	"io"
 	"log"
-	//"math/bits"
 	"os"
 )
 
@@ -203,7 +203,10 @@ func main() {
 					break
 				}
 				b := byteChunk[byteLocalIndex]
-				s.SetContent(col, row, rune(b), nil, textStyle)
+				hexEncode := hex.EncodeToString([]byte{b})
+				s.SetContent(col * 3, row, rune(hexEncode[0]), nil, textStyle)
+				s.SetContent((col * 3) + 1, row, rune(hexEncode[1]), nil, textStyle)
+				s.SetContent((col * 3) + 2, row, rune("|"[0]), nil, textStyle)
 			}
 		}
 		s.Show()
