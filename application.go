@@ -2,8 +2,10 @@ package main
 
 import (
 	"github.com/gdamore/tcell/v2"
+	"github.com/reactivex/rxgo/v2"
 	"io"
 	"log"
+	//"math/bits"
 	"os"
 )
 
@@ -17,6 +19,10 @@ func check(e error) {
 }
 
 func main() {
+	fileSeekChannel := make(chan rxgo.Item)
+
+	fileSeekObservable := rxgo.FromChannel(fileSeekChannel)
+
 	var bytesPerLine int64 = 120
 	numberOfRows := 3
 
@@ -69,19 +75,30 @@ func main() {
 
 	redraw()
 
+	fileSeekObservable.DoOnNext(func (i interface {}) {
+		if i == "up" {
+			currentRow -= 1
+			if currentRow < 0 {
+				currentRow = 0
+			}
+		} else if i == "down" {
+			currentRow += 1
+			maxRowIndex := fileSize / bytesPerLine
+			if currentRow >= maxRowIndex {
+				currentRow = maxRowIndex
+			}
+		}
+		redraw()
+	})
+
 	// Event loop
 	quit := func() {
 		s.Fini()
 		os.Exit(0)
 	}
 	for {
-		// Update screen
-		s.Show()
-
-		// Poll event
 		ev := s.PollEvent()
 
-		// Process event
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			s.Sync()
@@ -89,18 +106,9 @@ func main() {
 			if ev.Key() == tcell.KeyEscape || ev.Key() == tcell.KeyCtrlC {
 				quit()
 			} else if ev.Key() == tcell.KeyUp {
-				currentRow -= 1
-				if currentRow < 0 {
-					currentRow = 0
-				}
-				redraw()
+				fileSeekChannel <- rxgo.Of("up")
 			} else if ev.Key() == tcell.KeyDown {
-				currentRow += 1
-				maxRowIndex := fileSize / bytesPerLine
-				if currentRow >= maxRowIndex {
-					currentRow = maxRowIndex
-				}
-				redraw()
+				fileSeekChannel <- rxgo.Of("down")
 			}
 		}
 	}
