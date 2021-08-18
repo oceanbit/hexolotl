@@ -20,6 +20,7 @@ func check(e error) {
 type OnChangeFn func([]byte, int64, int64)
 
 func readAndObserveFile(
+	fileName string,
 	bytesPerRow int64,
 	numberOfRows int,
 	onChange OnChangeFn,
@@ -31,7 +32,7 @@ func readAndObserveFile(
 	var currentFileChunkIndex int64 = 0
 
 	// TODO: Replace this with file selector
-	activeFile, openErr := os.Open("demo.txt")
+	activeFile, openErr := os.Open(fileName)
 	check(openErr)
 
 	byteChunk := make([]byte, bytesPerRow * int64(numberOfRows))
@@ -82,6 +83,78 @@ func readAndObserveFile(
 	return fileSeekChannel, activeFile
 }
 
+func simpleFileSelector(s tcell.Screen, style tcell.Style, quit func()) string {
+	fileName := ""
+
+	//File input validation
+	for fileName == "" {
+		attemptedFileName := textPrompt("Enter a file to analyze: ", s, style, quit)
+		_, statErr := os.Stat(attemptedFileName)
+		if os.IsNotExist(statErr) {
+			writeText(
+				"Invalid filepath, please input a valid filepath. Hit enter to try again",
+				0,
+				s,
+				style,
+			)
+			waitForEnter(
+				s,
+				quit,
+				func(ev tcell.Event) {},
+			)
+			continue
+		}
+		check(statErr)
+		fileName = attemptedFileName
+		break
+	}
+
+	return fileName
+}
+func writeText(text string, y int, s tcell.Screen, style tcell.Style) {
+	for i, promptChar := range text {
+		s.SetContent(i, y, promptChar, nil, style)
+		s.Sync()
+	}
+}
+
+func waitForEnter(s tcell.Screen, quit func(), evFn func(ev tcell.Event)) {
+	for {
+		ev := s.PollEvent()
+		switch ev := ev.(type) {
+		case *tcell.EventResize:
+			s.Sync()
+		case *tcell.EventKey:
+			if ev.Key() == tcell.KeyEscape || ev.Key() == tcell.KeyCtrlC {
+				quit()
+			} else if ev.Key() == tcell.KeyEnter {
+				s.Clear()
+				return
+			}
+		}
+		evFn(ev)
+	}
+}
+
+func textPrompt(promptText string, s tcell.Screen, style tcell.Style, quit func()) string {
+	writeText(promptText, 0, s, style)
+
+	var output string = ""
+	colIndex := 0
+	waitForEnter(s, quit, func(ev tcell.Event) {
+		switch ev := ev.(type) {
+		case *tcell.EventKey:
+			char := ev.Rune()
+			s.SetContent(colIndex, 1, char, nil, style)
+			output += string(char)
+			s.Sync()
+			colIndex++
+		}
+	})
+	s.Clear()
+	return output
+}
+
 func main() {
 	var bytesPerRow int64 = 120
 	numberOfRows := 3
@@ -98,6 +171,15 @@ func main() {
 	}
 	s.SetStyle(defStyle)
 	s.Clear()
+
+	quit := func() {
+		s.Fini()
+		//closeErr := activeFile.Close()
+		//check(closeErr)
+		os.Exit(0)
+	}
+
+	fileName := simpleFileSelector(s, textStyle, quit)
 
 	var redraw OnChangeFn = func(byteChunk []byte, currentFileChunkIndex int64, fileSize int64) {
 		s.Clear()
@@ -116,18 +198,13 @@ func main() {
 		s.Show()
 	}
 
-	fileSeekChannel, activeFile := readAndObserveFile(
+	fileSeekChannel, _ := readAndObserveFile(
+		fileName,
 		bytesPerRow,
 		numberOfRows,
 		redraw,
 	)
 
-	quit := func() {
-		s.Fini()
-		closeErr := activeFile.Close()
-		check(closeErr)
-		os.Exit(0)
-	}
 	for {
 		ev := s.PollEvent()
 		switch ev := ev.(type) {
