@@ -146,12 +146,20 @@ func textPrompt(promptText string, s tcell.Screen, style tcell.Style, quit func(
 	waitForEnter(s, quit, func(ev tcell.Event) {
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
-			// Handle backspace properly
-			char := ev.Rune()
-			s.SetContent(colIndex, 1, char, nil, style)
-			output += string(char)
-			s.Sync()
-			colIndex++
+			if ev.Key() == tcell.KeyBackspace {
+				s.SetContent(colIndex, 1, rune(" "[0]), nil, style)
+				s.Sync()
+				if len(output) > 0 && colIndex > 0 {
+					output = output[:len(output) - 1]
+					colIndex--
+				}
+			} else {
+				char := ev.Rune()
+				s.SetContent(colIndex, 1, char, nil, style)
+				output += string(char)
+				s.Sync()
+				colIndex++
+			}
 		}
 	})
 	s.Clear()
@@ -196,8 +204,6 @@ func main() {
 				}
 				b := byteChunk[byteLocalIndex]
 				s.SetContent(col, row, rune(b), nil, textStyle)
-				//writeText(strconv.FormatInt(currentFileChunkIndex, 10), 5, s, textStyle)
-				//writeText(string(byteChunk), 6, s, textStyle)
 			}
 		}
 		s.Show()
